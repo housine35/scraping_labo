@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Comparatif d'empreinte TLS pour le scraping :
-- Requête A : requests (classique)
-- Requête B : noble-tls (imitation navigateur)
-Affiche JA3, UA, ALPN, H2/H3, et un verdict de cohérence.
+TLS Fingerprint Comparison for Scraping:
+- Request A: requests (standard)
+- Request B: noble-tls (browser emulation)
+Displays JA3, UA, ALPN, H2/H3, and a consistency verdict.
 
-Prérequis :
+Requirements:
   pip install requests noble-tls
 
-Exécuter :
+Run:
   python compare_tls.py
 """
 
@@ -30,7 +30,7 @@ ENDPOINT = "https://tls.peet.ws/api/all"
 
 def fetch_with_requests():
     headers = {
-        # UA Chrome "classique", volontairement incohérent avec l'empreinte TLS de requests
+        # Standard Chrome UA, intentionally inconsistent with requests' TLS fingerprint
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -57,23 +57,25 @@ def fetch_with_requests():
 async def fetch_with_nobletls():
     if noble_tls is None:
         raise RuntimeError(
-            "Le module noble_tls n'est pas disponible. Installez-le : pip install noble-tls"
+            "The noble_tls module is not available. Install it: pip install noble-tls"
         )
 
-    # Met à jour les profils si nécessaire (empreintes navigateurs)
+    # Update profiles if necessary (browser fingerprints)
     await noble_tls.update_if_necessary()
 
-    # Choisissez le profil qui vous intéresse (Chrome/Firefox/Safari/iOS/Android…)
+    # Choose the desired profile (Chrome/Firefox/Safari/iOS/Android...)
     session = noble_tls.Session(
-        client=Client.CHROME_124,  # ex: Client.FIREFOX_126, Client.SAFARI_17, etc.
-        # proxy="http://user:pass@host:port",  # décommentez si besoin d'un proxy
+        client=Client.CHROME_124,  # e.g., Client.FIREFOX_126, Client.SAFARI_17, etc.
+        # proxy="http://user:pass@host:port",  # uncomment if a proxy is needed
         debug=False,
     )
 
     headers = {
-    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-}
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
+    }
     res = await session.get("https://tls.peet.ws/api/all", headers=headers)
 
     if res.status_code != 200:
@@ -93,30 +95,30 @@ async def fetch_with_nobletls():
 
 def verdict(ua: str, ja3: str) -> str:
     ua_l = (ua or "").lower()
-    # Heuristique simple : on ne connaît pas la vraie table des JA3 Chrome/Firefox ici,
-    # mais on peut indiquer le risque de mismatch si UA annonce un navigateur populaire
-    # alors que la pile TLS est manifestement non-navigateur (cas typique de requests).
+    # Simple heuristic: we don’t know the true JA3 table for Chrome/Firefox here,
+    # but we can flag a potential mismatch if the UA claims a popular browser
+    # while the TLS stack is clearly non-browser (typical for requests).
     if "chrome" in ua_l or "chromium" in ua_l or "edg" in ua_l:
-        # JA3 de requests/OpenSSL ne ressemble pas à un vrai Chrome généralement
-        # On affiche un warning générique si la chaîne est courte/atypique
+        # JA3 from requests/OpenSSL usually doesn’t match a real Chrome
+        # Display a generic warning if the JA3 string is short/atypical
         if ja3 and "," in ja3 and "-" in ja3:
-            # On ne valide pas formellement (pas de base blanche), juste un message indicatif
-            return "→ Cohérence probable si le client est un vrai navigateur. Vérifiez côté serveur si nécessaire."
-        return "⚠️ Possible mismatch UA↔JA3 (empreinte non navigateur)."
+            # No formal validation (no whitelist), just an indicative message
+            return "→ Likely consistent if the client is a real browser. Verify server-side if needed."
+        return "⚠️ Possible UA↔JA3 mismatch (non-browser fingerprint)."
     if "firefox" in ua_l or "safari" in ua_l or "ios" in ua_l or "android" in ua_l:
         if ja3 and "," in ja3 and "-" in ja3:
-            return "→ Cohérence probable si l'empreinte est bien celle du client déclaré."
-        return "⚠️ Possible mismatch UA↔JA3."
-    # UA générique : on reste neutre
-    return "ℹ️ Impossible d’évaluer la cohérence sans base de JA3 connue."
+            return "→ Likely consistent if the fingerprint matches the declared client."
+        return "⚠️ Possible UA↔JA3 mismatch."
+    # Generic UA: remain neutral
+    return "ℹ️ Unable to assess consistency without a known JA3 database."
 
 
-def p(s):  # petit helper d’affichage
+def p(s):  # Small display helper
     return s if s is not None else "—"
 
 
 def main():
-    print("\n=== A) Requête avec requests (pile TLS Python/OpenSSL) ===")
+    print("\n=== A) Request with requests (Python/OpenSSL TLS stack) ===")
     try:
         a = fetch_with_requests()
         print(f"Client        : {a['client']}")
@@ -128,9 +130,9 @@ def main():
         print(f"JA3           : {p(a['ja3'])}")
         print(f"Diagnostic    : {verdict(a['ua'], a['ja3'])}")
     except Exception as e:
-        print("Erreur requests:", e, file=sys.stderr)
+        print("Requests error:", e, file=sys.stderr)
 
-    print("\n=== B) Requête avec noble-tls (imitation navigateur) ===")
+    print("\n=== B) Request with noble-tls (browser emulation) ===")
     try:
         b = asyncio.run(fetch_with_nobletls())
         print(f"Client        : {b['client']}")
@@ -142,11 +144,11 @@ def main():
         print(f"JA3           : {p(b['ja3'])}")
         print(f"Diagnostic    : {verdict(b['ua'], b['ja3'])}")
     except Exception as e:
-        print("Erreur noble-tls:", e, file=sys.stderr)
+        print("Noble-tls error:", e, file=sys.stderr)
 
-    print("\nAstuce : si A montre un JA3 typique d’OpenSSL et B un JA3 ‘navigateur’, "
-          "vous verrez la différence immédiatement. "
-          "Côté sites très protégés, d’autres signaux (cookies, JS, timings) peuvent aussi compter.")
+    print("\nTip: If A shows a typical OpenSSL JA3 and B shows a browser-like JA3, "
+          "the difference will be immediately visible. "
+          "For highly protected sites, other signals (cookies, JS, timings) may also matter.")
 
 
 if __name__ == "__main__":
